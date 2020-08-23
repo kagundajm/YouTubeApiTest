@@ -9,34 +9,34 @@
     <div class="card-header">
         <h1 class="display-4 small "></h1>YouTube Video Upload</h1>
     </div>
-        <div class="card-body video-info">
-            <form method="post" action="" enctype="multipart/form-data">
-                <div class="text-center video-selector">
-                    <label asp-for="VideoUpload.VideoFile" id="video-input" class="pt-3 text-primary">
-                        Select video to upload...
-                        <input asp-for="VideoUpload.VideoFile" accept="video/*" class="sr-only" required>
-                    </label>
-                    <div class="w-50 mx-auto text-left small"> 
-                        <div class="font-weight-light"> File Name: <span id="selectedFileName" class="font-weight-normal"></span> </div>
-                        <div class="pb-3 font-weight-light"> File Size: <span id="selectedFileSize" class="font-weight-normal"></span> </div>
-                    </div>
+    <div class="card-body video-info">
+        <form id="uploadVideo" method="post" action="" enctype="multipart/form-data">
+            <div class="text-center video-selector">
+                <label asp-for="VideoUpload.VideoFile" id="video-input" class="pt-3 text-primary">
+                    Select video to upload...
+                    <input asp-for="VideoUpload.VideoFile" accept="video" class="sr-only" required>
+                </label>
+                <div class="w-50 mx-auto text-left small"> 
+                    <div class="font-weight-light"> File Name: <span id="selectedFileName" class="font-weight-normal"></span> </div>
+                    <div class="pb-3 font-weight-light"> File Size: <span id="selectedFileSize" class="font-weight-normal"></span> </div>
                 </div>
-                <hr  />
+            </div>
+            <hr  />
 
-                <div class="form-group">
-                    <label asp-for="VideoUpload.Title" class="font-weight-light"></label>
-                    <input asp-for="VideoUpload.Title" class="form-control form-control-sm"  placeholder="Video title" required>
-                </div>
-                <div class="form-group">
-                    <label asp-for="VideoUpload.Description" class="font-weight-light"></label>
-                    <textarea asp-for="VideoUpload.Description" class="form-control form-control-sm"  placeholder="Video description" rows="3" required></textarea>
-                </div>
-                <div class="d-flex justify-content-between ">
-                    <button type="submit" class="btn btn-primary "  >Upload Video</button>
-                    <a asp-page-handler="requestcode" class="btn btn-warning">Request authorization code</a>
-                </div>
-            </form>
-        </div>
+            <div class="form-group">
+                <label asp-for="VideoUpload.Title" class="font-weight-light"></label>
+                <input asp-for="VideoUpload.Title" class="form-control form-control-sm"  placeholder="Video title" required>
+            </div>
+            <div class="form-group">
+                <label asp-for="VideoUpload.Description" class="font-weight-light"></label>
+                <textarea asp-for="VideoUpload.Description" class="form-control form-control-sm"  placeholder="Video description" rows="3" required></textarea>
+            </div>
+            <div class="d-flex justify-content-between ">
+                <button type="submit" id="submit" class="btn btn-primary "  >Upload Video</button>
+                <a asp-page-handler="requestcode" class="btn btn-warning">Request authorization code</a>
+            </div>
+        </form>
+    </div>
 </div>
 
 @section Scripts {
@@ -45,9 +45,44 @@
         videoSelector.addEventListener('change', (event) => {
             const file = event.target.files[0];
             const size = file.size/1000000;
-            console.log("file:", file)
             document.getElementById('selectedFileName').innerHTML = file.name;
             document.getElementById('selectedFileSize').innerHTML = `${size.toFixed(1)}MB`;
         });
+
+        
+        const form = document.getElementById('uploadVideo');
+        form.addEventListener('submit',  evt => {
+
+            evt.preventDefault();
+
+            let formData = new FormData(form);
+            let xhr = new XMLHttpRequest();
+
+            // lets track the upload progress
+            xhr.upload.onprogress = function(evt) {
+                console.log(`Uploaded ${evt.loaded} of ${evt.total}`)
+            };
+
+            // 
+            xhr.onloadend = function(data) {
+                if (xhr.status == 200){
+                    console.log(' success returned. data: ', data)
+                    let response = xhr.response;
+                    console.log(' response string: ', response)
+                    let responseJson = JSON.parse(response);
+                    console.log(' response Json object: ', responseJson)
+                    console.log(' Video Id: ', responseJson.id)
+                }else {
+                    console.log(` error returned. status: ${this.status} data:`, data)
+                }
+            }
+            
+            xhr.open('post', '/videos/upload');
+            xhr.send(formData);
+
+        })
+
+
+
     </script>
 }

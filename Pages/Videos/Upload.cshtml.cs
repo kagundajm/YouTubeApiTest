@@ -1,3 +1,5 @@
+using System.Net.Mime;
+using System.Net.Http.Headers;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -33,6 +35,9 @@ namespace YouTubeApiTest.Pages.Videos
     private IHttpClientFactory _clientFactory;
     private IWebHostEnvironment _hostingEnvironment;
     private string _tempFilePath;
+    private static long _sizeOfVideo;
+    private static long _bytesSent;
+    private string _videoId;
 
     [BindProperty]
     public VideoUploadModel VideoUpload { get; set; }
@@ -46,14 +51,18 @@ namespace YouTubeApiTest.Pages.Videos
 
     public void OnGet()
     {
-      string webRootPath = _hostingEnvironment.WebRootPath;
-      string contentRootPath = _hostingEnvironment.ContentRootPath;
 
-      _logger.LogInformation("||===>>> _hostingEnvironment.WebRootPath: {webRootPath}", webRootPath);
-      _logger.LogInformation("||===>>> _hostingEnvironment.ContentRootPath: {contentRootPath}", contentRootPath);
     }
-    public async void OnPostAsync()
+
+    // https://docs.microsoft.com/en-us/aspnet/core/performance/caching/response?view=aspnetcore-3.1
+    // https://gunnarpeipman.com/aspnet-core-response-cache/
+    // https://www.learmoreseekmore.com/2020/01/how-response-caching-works-in-aspnet.html
+    // https://docs.microsoft.com/en-us/aspnet/core/performance/caching/middleware?view=aspnetcore-3.1
+    
+
+    public async Task<ContentResult> OnPostAsync()
     {
+      _logger.LogInformation("||===> OnPostAsync handler method called");
       var video = GetVideoData(VideoUpload.Title, VideoUpload.Description);
 
       var user = OAuthClientInfo.LoadClientSecretsInfo();
@@ -73,32 +82,58 @@ namespace YouTubeApiTest.Pages.Videos
         videosInsertRequest.ProgressChanged += VideoUploadProgressChanged;
         videosInsertRequest.ResponseReceived += VideoUploadResponseReceived;
 
-        await videosInsertRequest.UploadAsync();
+        _sizeOfVideo = fileStream.Length;
+        // Chunks (except the last chunk) must be a multiple of 
+        // Google.Apis.Upload.ResumableUpload.MinimumChunkSize  (256KB)
+        // to be compatible with Google upload servers. Default chunk size. 10MB  (10485760)
+        // Reduced chunk from 10MB to 1MB
+        // var chunkSize = 256 * 1024 * 4;
+        // videosInsertRequest.ChunkSize = chunkSize;
+
+        var progress = await videosInsertRequest.UploadAsync();
+
+        switch (progress.Status)
+        {
+          case  UploadStatus.Completed:
+              VideoUpload.Id = _videoId;
+              VideoUpload.Status = nameof (UploadStatus.Completed);
+            break;
+          case UploadStatus.Failed:
+            VideoUpload.ErrorMessage = progress.Exception.Message;
+            VideoUpload.Status = nameof (UploadStatus.Failed);
+            break;
+        }
+        return  Content(JsonSerializer.Serialize(VideoUpload));
       }
     }
     void VideoUploadResponseReceived(Video video)
     {
-      _logger.LogInformation("\n||==>Video id '{video.Id)}' was successfully uploaded.\n", video.Id);
-
+      _videoId = video.Id;
+      _logger.LogInformation("\n||==>Video id '{video.Id)}' was successfully uploaded.\n", _videoId);
+      _bytesSent = _sizeOfVideo;
       var file = new FileInfo(_tempFilePath);
       file.Delete();
     }
 
     void VideoUploadProgressChanged(IUploadProgress progress)
     {
-      switch (progress.Status)
-      {
-        case UploadStatus.Uploading:
-          _logger.LogInformation("||==> Uploading video: {progress.BytesSent} bytes sent.", progress.BytesSent);
-          break;
+      
+        switch (progress.Status)
+        {
+          case UploadStatus.Uploading:
+            _bytesSent = progress.BytesSent;
+            _logger.LogInformation("||==> Uploading video: {progress.BytesSent} bytes sent.", _bytesSent);
 
-        case UploadStatus.Failed:
-          _logger.LogError("||==> An error prevented the upload from completing.{progress.Exception}", progress.Exception);
+            break;
 
-          var file = new FileInfo(_tempFilePath);
-          file.Delete();
-          break;
-      }
+          case UploadStatus.Failed:
+            _logger.LogError("||==> An error prevented the upload from completing.{progress.Exception}", progress.Exception);
+
+            var file = new FileInfo(_tempFilePath);
+            file.Delete();
+            break;
+        }
+      
     }
     private YouTubeService FetchYouTubeService(TokenResponse tokenResponse, string clientId, string clientSecret)
     {
@@ -194,7 +229,7 @@ namespace YouTubeApiTest.Pages.Videos
         {
           PrivacyStatus = "private", // set to public to make it available to public
           SelfDeclaredMadeForKids = false,
-          PublishAt = "2020-08-20"  // can only be set if privacy status of video is private.
+          PublishAt = "2020-12-20"  // can only be set if privacy status of video is private.
         },
         Snippet = new VideoSnippet
         {
@@ -312,9 +347,23 @@ namespace YouTubeApiTest.Pages.Videos
 
   public class VideoUploadModel
   {
+    [JsonPropertyName("id")]
+    public string Id { get; set; }
+
+    [JsonIgnore]
     public IFormFile VideoFile { get; set; }
+
+    [JsonPropertyName("title")]
     public string Title { get; set; }
+
+    [JsonPropertyName("description")]
     public string Description { get; set; }
+
+    [JsonPropertyName("errorMessage")]
+    public string ErrorMessage { get; set; }
+
+    [JsonPropertyName("status")]
+    public string Status { get; internal set; }
   }
 
   public class Token
