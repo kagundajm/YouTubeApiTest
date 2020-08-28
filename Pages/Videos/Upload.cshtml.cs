@@ -1,5 +1,3 @@
-using System.Net.Mime;
-using System.Net.Http.Headers;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -24,9 +22,13 @@ using Google.Apis.Auth.OAuth2;
 using Google.Apis.Services;
 using System.Reflection;
 using Google.Apis.Upload;
+using Microsoft.AspNetCore.Http.Features;
 
 namespace YouTubeApiTest.Pages.Videos
 {
+  // Multipart body length limit 134217728 exceeded
+  [RequestFormLimits(MultipartBodyLengthLimit = 268_435_456)] // 256MB
+  [RequestSizeLimit(268_435_456)] // 256MB
   public class UploadModel : PageModel
   {
     const string TOKEN_FILE = "youtube_token.json";
@@ -58,11 +60,23 @@ namespace YouTubeApiTest.Pages.Videos
     // https://gunnarpeipman.com/aspnet-core-response-cache/
     // https://www.learmoreseekmore.com/2020/01/how-response-caching-works-in-aspnet.html
     // https://docs.microsoft.com/en-us/aspnet/core/performance/caching/middleware?view=aspnetcore-3.1
-    
+
+    //[ResponseCache(Duration=0)]
+    public ContentResult OnGetProgress()
+    {
+      var percent = 1M;
+      _logger.LogInformation("\n||==>_bytesSent: {_bytesSent} _sizeOfVideo: {_sizeOfVideo}", _bytesSent, _sizeOfVideo);
+
+      if (_bytesSent > 0 && _sizeOfVideo > 0)
+      {
+        percent = Decimal.Divide(_bytesSent, _sizeOfVideo) * 100;
+        _logger.LogInformation("\n||==>_bytesSent/_sizeOfVideo =  percent:{percent}", percent);
+      }
+      return Content(percent.ToString("F1"));
+    }
 
     public async Task<ContentResult> OnPostAsync()
     {
-      _logger.LogInformation("||===> OnPostAsync handler method called");
       var video = GetVideoData(VideoUpload.Title, VideoUpload.Description);
 
       var user = OAuthClientInfo.LoadClientSecretsInfo();
@@ -86,26 +100,31 @@ namespace YouTubeApiTest.Pages.Videos
         // Chunks (except the last chunk) must be a multiple of 
         // Google.Apis.Upload.ResumableUpload.MinimumChunkSize  (256KB)
         // to be compatible with Google upload servers. Default chunk size. 10MB  (10485760)
-        // Reduced chunk from 10MB to 1MB
-        // var chunkSize = 256 * 1024 * 4;
-        // videosInsertRequest.ChunkSize = chunkSize;
+        // Reduced chunk from 10MB to 2MB
+        var chunkSize = 256 * 1024 * 4;
+        videosInsertRequest.ChunkSize = chunkSize;
 
         var progress = await videosInsertRequest.UploadAsync();
-
+        
         switch (progress.Status)
         {
-          case  UploadStatus.Completed:
-              VideoUpload.Id = _videoId;
-              VideoUpload.Status = nameof (UploadStatus.Completed);
+          case UploadStatus.Completed:
+            VideoUpload.Id = _videoId;
+            VideoUpload.Status = nameof(UploadStatus.Completed).ToLower();
             break;
           case UploadStatus.Failed:
-            VideoUpload.ErrorMessage = progress.Exception.Message;
-            VideoUpload.Status = nameof (UploadStatus.Failed);
+            var error = progress.Exception;
+            VideoUpload.ErrorMessage = error.Message;
+            VideoUpload.Status = nameof(UploadStatus.Failed).ToLower();
+            _logger.LogInformation("\n||==>UploadStatus.Failed->error.Message:{error.Message}", error.Message);
             break;
         }
-        return  Content(JsonSerializer.Serialize(VideoUpload));
+        return Content(JsonSerializer.Serialize(VideoUpload));
       }
+
+
     }
+
     void VideoUploadResponseReceived(Video video)
     {
       _videoId = video.Id;
@@ -117,23 +136,23 @@ namespace YouTubeApiTest.Pages.Videos
 
     void VideoUploadProgressChanged(IUploadProgress progress)
     {
-      
-        switch (progress.Status)
-        {
-          case UploadStatus.Uploading:
-            _bytesSent = progress.BytesSent;
-            _logger.LogInformation("||==> Uploading video: {progress.BytesSent} bytes sent.", _bytesSent);
+      var status = progress.Status;
+      _logger.LogInformation("||==> VideoUploadProgressChanged: progress status: {status}.", nameof(status));
+      switch (progress.Status)
+      {
+        case UploadStatus.Uploading:
+          _bytesSent = progress.BytesSent;
+          _logger.LogInformation("||==> Uploading video: {_bytesSent} bytes sent.", _bytesSent);
 
-            break;
+          break;
+        case UploadStatus.Failed:
+          _logger.LogError("||==> An error prevented the upload from completing.{progress.Exception}", progress.Exception);
 
-          case UploadStatus.Failed:
-            _logger.LogError("||==> An error prevented the upload from completing.{progress.Exception}", progress.Exception);
+          var file = new FileInfo(_tempFilePath);
+          file.Delete();
+          break;
+      }
 
-            var file = new FileInfo(_tempFilePath);
-            file.Delete();
-            break;
-        }
-      
     }
     private YouTubeService FetchYouTubeService(TokenResponse tokenResponse, string clientId, string clientSecret)
     {
@@ -331,6 +350,7 @@ namespace YouTubeApiTest.Pages.Videos
 
     public override void OnPageHandlerExecuting(PageHandlerExecutingContext context)
     {
+
       if (context.HandlerMethod.HttpMethod.ToLower().Equals("post") && this.ModelState.IsValid)
       {
         _tempFilePath = Path.GetTempFileName();

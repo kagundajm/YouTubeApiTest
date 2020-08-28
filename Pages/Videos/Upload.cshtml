@@ -38,9 +38,26 @@
         </form>
     </div>
 </div>
+<div id="uploadError" class="w-50 mx-auto mt-n3 border border-white text-danger invisible">
+    
+</div>
+<div id="uploadProgress" class="card-footer small w-50 mx-auto mt-n3 border border-white invisible">
+    <div>
+        <span id="uploaded"></span> 
+        <span id="percent" class="pl-1"></span>
+    </div>
+
+    <progress id="progress" class="w-50" max="100" value="1"> 1% </progress> 
+    
+    <span id="videoIdContainer" class="float-right invisible">
+        Assigned video ID:
+        <span id="videoId" class="font-weight-bold">EFTbRcm72P0</span>
+    </span>
+</div>
 
 @section Scripts {
     <script>
+        
         const videoSelector = document.querySelector('.video-selector');
         videoSelector.addEventListener('change', (event) => {
             const file = event.target.files[0];
@@ -50,35 +67,13 @@
         });
 
         
+
         const form = document.getElementById('uploadVideo');
         form.addEventListener('submit',  evt => {
 
             evt.preventDefault();
 
-            let formData = new FormData(form);
-            let xhr = new XMLHttpRequest();
-
-            // lets track the upload progress
-            xhr.upload.onprogress = function(evt) {
-                console.log(`Uploaded ${evt.loaded} of ${evt.total}`)
-            };
-
-            // 
-            xhr.onloadend = function(data) {
-                if (xhr.status == 200){
-                    console.log(' success returned. data: ', data)
-                    let response = xhr.response;
-                    console.log(' response string: ', response)
-                    let responseJson = JSON.parse(response);
-                    console.log(' response Json object: ', responseJson)
-                    console.log(' Video Id: ', responseJson.id)
-                }else {
-                    console.log(` error returned. status: ${this.status} data:`, data)
-                }
-            }
-            
-            xhr.open('post', '/videos/upload');
-            xhr.send(formData);
+            uploadVideo();
 
         })
 
