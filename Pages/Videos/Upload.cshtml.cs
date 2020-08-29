@@ -100,7 +100,7 @@ namespace YouTubeApiTest.Pages.Videos
         // Chunks (except the last chunk) must be a multiple of 
         // Google.Apis.Upload.ResumableUpload.MinimumChunkSize  (256KB)
         // to be compatible with Google upload servers. Default chunk size. 10MB  (10485760)
-        // Reduced chunk from 10MB to 2MB
+        // Reduced chunk from 10MB to 2MB to enable monitoring upload progress for small size videos
         var chunkSize = 256 * 1024 * 4;
         videosInsertRequest.ChunkSize = chunkSize;
 
@@ -246,16 +246,16 @@ namespace YouTubeApiTest.Pages.Videos
       {
         Status = new VideoStatus
         {
-          PrivacyStatus = "private", // set to public to make it available to public
+          PrivacyStatus = "public", 
           SelfDeclaredMadeForKids = false,
-          PublishAt = "2020-12-20"  // can only be set if privacy status of video is private.
+          // PublishAt = "2020-12-20"  // can only be set if privacy status of video is private.
         },
         Snippet = new VideoSnippet
         {
-          CategoryId = "28", // See https://developers.google.com/youtube/v3/docs/videoCategories/list
+          CategoryId = "28", 
           Title = title,
           Description = description,
-          Tags = new string[] { "Construction business", "construction in kenya", "construction management", "construction technology" },
+          Tags = new string[] { "Tag1", "Tag2", "Tag3"},
         }
       };
       return video;
